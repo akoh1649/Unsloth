@@ -264,6 +264,7 @@ interface ChatSettingsPanelProps {
   onOpenChange?: (open: boolean) => void;
   params: InferenceParams;
   onParamsChange: (params: InferenceParams) => void;
+  isExternalModel?: boolean;
   autoTitle: boolean;
   onAutoTitleChange: (enabled: boolean) => void;
   onReloadModel?: () => void;
@@ -274,6 +275,7 @@ export function ChatSettingsPanel({
   onOpenChange,
   params,
   onParamsChange,
+  isExternalModel = false,
   autoTitle,
   onAutoTitleChange,
   onReloadModel,
@@ -429,45 +431,47 @@ export function ChatSettingsPanel({
 
       <div className="flex-1 overflow-y-auto px-1.5">
         {/* mt-4 matches the Playground sidebar gap (SidebarHeader py-3 + SidebarGroup pt-1) */}
-        <div className="mt-4 px-2 pb-3">
-          <div className="flex items-center gap-2">
-            <Select value={activePreset} onValueChange={applyPreset}>
-              <SelectTrigger className="h-8 flex-1 corner-squircle text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {presets.map((p) => (
-                  <SelectItem key={p.name} value={p.name}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <button
-              type="button"
-              onClick={openSavePresetDialog}
-              className="flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
-              title="Save preset"
-            >
-              <HugeiconsIcon icon={FloppyDiskIcon} className="size-3.5" />
-              Save
-            </button>
-            <button
-              type="button"
-              onClick={() => deletePreset(activePreset)}
-              disabled={isBuiltinPreset}
-              className="flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-              title={
-                isBuiltinPreset
-                  ? "Built-in presets cannot be deleted"
-                  : "Delete selected preset"
-              }
-            >
-              <HugeiconsIcon icon={Delete02Icon} className="size-3.5" />
-              Delete
-            </button>
+        {!isExternalModel ? (
+          <div className="mt-4 px-2 pb-3">
+            <div className="flex items-center gap-2">
+              <Select value={activePreset} onValueChange={applyPreset}>
+                <SelectTrigger className="h-8 flex-1 corner-squircle text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {presets.map((p) => (
+                    <SelectItem key={p.name} value={p.name}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <button
+                type="button"
+                onClick={openSavePresetDialog}
+                className="flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
+                title="Save preset"
+              >
+                <HugeiconsIcon icon={FloppyDiskIcon} className="size-3.5" />
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => deletePreset(activePreset)}
+                disabled={isBuiltinPreset}
+                className="flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                title={
+                  isBuiltinPreset
+                    ? "Built-in presets cannot be deleted"
+                    : "Delete selected preset"
+                }
+              >
+                <HugeiconsIcon icon={Delete02Icon} className="size-3.5" />
+                Delete
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <div className="px-2 pb-4">
           <label
@@ -486,140 +490,148 @@ export function ChatSettingsPanel({
           />
         </div>
 
-        <CollapsibleSection
-          icon={Settings02Icon}
-          label="Model"
-          defaultOpen={true}
-        >
-          <div className="flex flex-col gap-3 py-1">
-            {isGguf && (
-              <>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium">Context Length</span>
-                    <Input
-                      type="number"
-                      value={
-                        typeof ctxDisplayValue === "number"
-                          ? ctxDisplayValue
-                          : (ggufContextLength ?? "")
-                      }
-                      placeholder="..."
-                      min={128}
-                      max={ctxMaxValue ?? undefined}
-                      step={1024}
-                      className="h-6 w-[100px] text-right text-xs tabular-nums"
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        if (raw === "") {
-                          setCustomContextLength(null);
-                          return;
-                        }
-                        const v = Number.parseInt(raw, 10);
-                        if (!Number.isNaN(v) && v >= 0) {
-                          const maxCtx =
-                            ctxMaxValue ?? Number.POSITIVE_INFINITY;
-                          const clamped = Math.min(v, maxCtx);
+        {!isExternalModel ? (
+          <>
+            <CollapsibleSection
+              icon={Settings02Icon}
+              label="Model"
+              defaultOpen={true}
+            >
+              <div className="flex flex-col gap-3 py-1">
+                {isGguf && (
+                  <>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium">Context Length</span>
+                        <Input
+                          type="number"
+                          value={
+                            typeof ctxDisplayValue === "number"
+                              ? ctxDisplayValue
+                              : (ggufContextLength ?? "")
+                          }
+                          placeholder="..."
+                          min={128}
+                          max={ctxMaxValue ?? undefined}
+                          step={1024}
+                          className="h-6 w-[100px] text-right text-xs tabular-nums"
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "") {
+                              setCustomContextLength(null);
+                              return;
+                            }
+                            const v = Number.parseInt(raw, 10);
+                            if (!Number.isNaN(v) && v >= 0) {
+                              const maxCtx =
+                                ctxMaxValue ?? Number.POSITIVE_INFINITY;
+                              const clamped = Math.min(v, maxCtx);
+                              setCustomContextLength(
+                                clamped === (ggufContextLength ?? 0)
+                                  ? null
+                                  : clamped,
+                              );
+                            }
+                          }}
+                        />
+                      </div>
+                      <Slider
+                        min={1024}
+                        max={ctxMaxValue ?? 4096}
+                        step={1024}
+                        value={[
+                          Math.min(
+                            typeof ctxDisplayValue === "number"
+                              ? ctxDisplayValue
+                              : (ggufContextLength ?? 4096),
+                            ctxMaxValue ?? 4096,
+                          ),
+                        ]}
+                        onValueChange={([v]) => {
                           setCustomContextLength(
-                            clamped === (ggufContextLength ?? 0)
-                              ? null
-                              : clamped,
+                            v === (ggufContextLength ?? 0) ? null : v,
                           );
-                        }
-                      }}
+                        }}
+                      />
+                      {ggufMaxContextLength != null &&
+                        typeof ctxDisplayValue === "number" &&
+                        ctxDisplayValue > ggufMaxContextLength && (
+                          <p className="text-[11px] text-amber-500">
+                            Exceeds estimated VRAM capacity ({ggufMaxContextLength.toLocaleString()} tokens). The model may use system RAM.
+                          </p>
+                        )}
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium">KV Cache Dtype</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          Quantize KV cache to reduce VRAM.
+                        </div>
+                      </div>
+                      <Select
+                        value={kvCacheDtype ?? "f16"}
+                        onValueChange={(v) => {
+                          setKvCacheDtype(v === "f16" ? null : v);
+                        }}
+                      >
+                        <SelectTrigger className="h-7 w-[90px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="f16">f16</SelectItem>
+                          <SelectItem value="bf16">bf16</SelectItem>
+                          <SelectItem value="q8_0">q8_0</SelectItem>
+                          <SelectItem value="q5_1">q5_1</SelectItem>
+                          <SelectItem value="q4_1">q4_1</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {modelSettingsDirty && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => onReloadModel?.()}
+                          className="rounded-md bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                        >
+                          Apply
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomContextLength(null);
+                            setKvCacheDtype(loadedKvCacheDtype);
+                          }}
+                          className="rounded-md border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+                {!isGguf && params.checkpoint && (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium">Enable custom code</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Allow models with custom code (e.g. Nemotron). Only enable
+                        if sure.
+                      </div>
+                    </div>
+                    <Switch
+                      checked={params.trustRemoteCode ?? false}
+                      onCheckedChange={set("trustRemoteCode")}
                     />
                   </div>
-                  <Slider
-                    min={1024}
-                    max={ctxMaxValue ?? 4096}
-                    step={1024}
-                    value={[
-                      Math.min(
-                        typeof ctxDisplayValue === "number"
-                          ? ctxDisplayValue
-                          : (ggufContextLength ?? 4096),
-                        ctxMaxValue ?? 4096,
-                      ),
-                    ]}
-                    onValueChange={([v]) => {
-                      setCustomContextLength(
-                        v === (ggufContextLength ?? 0) ? null : v,
-                      );
-                    }}
-                  />
-                  {ggufMaxContextLength != null &&
-                    typeof ctxDisplayValue === "number" &&
-                    ctxDisplayValue > ggufMaxContextLength && (
-                      <p className="text-[11px] text-amber-500">
-                        Exceeds estimated VRAM capacity ({ggufMaxContextLength.toLocaleString()} tokens). The model may use system RAM.
-                      </p>
-                    )}
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium">KV Cache Dtype</div>
-                    <div className="text-[11px] text-muted-foreground">
-                      Quantize KV cache to reduce VRAM.
-                    </div>
-                  </div>
-                  <Select
-                    value={kvCacheDtype ?? "f16"}
-                    onValueChange={(v) => {
-                      setKvCacheDtype(v === "f16" ? null : v);
-                    }}
-                  >
-                    <SelectTrigger className="h-7 w-[90px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="f16">f16</SelectItem>
-                      <SelectItem value="bf16">bf16</SelectItem>
-                      <SelectItem value="q8_0">q8_0</SelectItem>
-                      <SelectItem value="q5_1">q5_1</SelectItem>
-                      <SelectItem value="q4_1">q4_1</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {modelSettingsDirty && (
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => onReloadModel?.()}
-                      className="rounded-md bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                    >
-                      Apply
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCustomContextLength(null);
-                        setKvCacheDtype(loadedKvCacheDtype);
-                      }}
-                      className="rounded-md border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent"
-                    >
-                      Reset
-                    </button>
-                  </div>
                 )}
-              </>
-            )}
-            {!isGguf && params.checkpoint && (
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-xs font-medium">Enable custom code</div>
-                  <div className="text-[11px] text-muted-foreground">
-                    Allow models with custom code (e.g. Nemotron). Only enable
-                    if sure.
-                  </div>
-                </div>
-                <Switch
-                  checked={params.trustRemoteCode ?? false}
-                  onCheckedChange={set("trustRemoteCode")}
-                />
               </div>
-            )}
+            </CollapsibleSection>
+          </>
+        ) : (
+          <div className="rounded-md border border-border/70 bg-muted/30 px-2.5 py-2 text-[11px] text-muted-foreground">
+            External model selected. Local-only settings are hidden.
           </div>
-        </CollapsibleSection>
+        )}
 
         <CollapsibleSection
           icon={SlidersHorizontalIcon}
@@ -644,56 +656,70 @@ export function ChatSettingsPanel({
               onChange={set("topP")}
               displayValue={params.topP === 1 ? "Off" : undefined}
             />
-            <ParamSlider
-              label="Top K"
-              value={params.topK}
-              min={0}
-              max={100}
-              step={1}
-              onChange={set("topK")}
-              displayValue={params.topK === 0 ? "Off" : undefined}
-            />
-            <ParamSlider
-              label="Min P"
-              value={params.minP}
-              min={0}
-              max={1}
-              step={0.01}
-              onChange={set("minP")}
-            />
-            <ParamSlider
-              label="Repetition Penalty"
-              value={params.repetitionPenalty}
-              min={1}
-              max={2}
-              step={0.05}
-              onChange={set("repetitionPenalty")}
-              displayValue={params.repetitionPenalty === 1 ? "Off" : undefined}
-            />
-            <ParamSlider
-              label="Presence Penalty"
-              value={params.presencePenalty}
-              min={0}
-              max={2}
-              step={0.1}
-              onChange={set("presencePenalty")}
-              displayValue={params.presencePenalty === 0 ? "Off" : undefined}
-            />
-            {!isGguf && (
-              <ParamSlider
-                label="Max Seq Length"
-                value={params.maxSeqLength}
-                min={128}
-                max={32768}
-                step={128}
-                onChange={set("maxSeqLength")}
-              />
-            )}
+            {!isExternalModel ? (
+              <>
+                <ParamSlider
+                  label="Top K"
+                  value={params.topK}
+                  min={0}
+                  max={100}
+                  step={1}
+                  onChange={set("topK")}
+                  displayValue={params.topK === 0 ? "Off" : undefined}
+                />
+                <ParamSlider
+                  label="Min P"
+                  value={params.minP}
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  onChange={set("minP")}
+                />
+                <ParamSlider
+                  label="Repetition Penalty"
+                  value={params.repetitionPenalty}
+                  min={1}
+                  max={2}
+                  step={0.05}
+                  onChange={set("repetitionPenalty")}
+                  displayValue={
+                    params.repetitionPenalty === 1 ? "Off" : undefined
+                  }
+                />
+                <ParamSlider
+                  label="Presence Penalty"
+                  value={params.presencePenalty}
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  onChange={set("presencePenalty")}
+                  displayValue={
+                    params.presencePenalty === 0 ? "Off" : undefined
+                  }
+                />
+                {!isGguf && (
+                  <ParamSlider
+                    label="Max Seq Length"
+                    value={params.maxSeqLength}
+                    min={128}
+                    max={32768}
+                    step={128}
+                    onChange={set("maxSeqLength")}
+                  />
+                )}
+              </>
+            ) : null}
             <ParamSlider
               label="Max Tokens"
               value={params.maxTokens}
               min={64}
-              max={isGguf && ggufContextLength ? ggufContextLength : 32768}
+              max={
+                isExternalModel
+                  ? 32768
+                  : isGguf && ggufContextLength
+                    ? ggufContextLength
+                    : 32768
+              }
               step={64}
               onChange={set("maxTokens")}
               displayValue={
@@ -707,34 +733,41 @@ export function ChatSettingsPanel({
           </div>
         </CollapsibleSection>
 
-        <CollapsibleSection icon={Wrench01Icon} label="Tools">
-          <div className="flex flex-col gap-3 py-1">
-            <AutoHealToolCallsToggle />
-            <MaxToolCallsSlider />
-            <ToolCallTimeoutSlider />
-          </div>
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          icon={UserSettings01Icon}
-          label="Preferences"
-          defaultOpen={true}
-        >
-          <div className="flex flex-col gap-3 py-1">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-xs font-medium">Auto title</div>
-                <div className="text-[11px] text-muted-foreground">
-                  Generate short title after reply.
-                </div>
+        {!isExternalModel ? (
+          <>
+            <CollapsibleSection icon={Wrench01Icon} label="Tools">
+              <div className="flex flex-col gap-3 py-1">
+                <AutoHealToolCallsToggle />
+                <MaxToolCallsSlider />
+                <ToolCallTimeoutSlider />
               </div>
-              <Switch checked={autoTitle} onCheckedChange={onAutoTitleChange} />
-            </div>
-            <HfTokenField />
-          </div>
-        </CollapsibleSection>
+            </CollapsibleSection>
 
-        <ChatTemplateSection onReloadModel={onReloadModel} />
+            <CollapsibleSection
+              icon={UserSettings01Icon}
+              label="Preferences"
+              defaultOpen={true}
+            >
+              <div className="flex flex-col gap-3 py-1">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium">Auto title</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      Generate short title after reply.
+                    </div>
+                  </div>
+                  <Switch
+                    checked={autoTitle}
+                    onCheckedChange={onAutoTitleChange}
+                  />
+                </div>
+                <HfTokenField />
+              </div>
+            </CollapsibleSection>
+
+            <ChatTemplateSection onReloadModel={onReloadModel} />
+          </>
+        ) : null}
       </div>
       <Dialog
         open={savePresetOpen}
