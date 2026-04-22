@@ -11,6 +11,7 @@ through its OpenAI-compatible /v1/chat/completions endpoint.
 import atexit
 import contextlib
 import json
+import os
 import re
 import struct
 import structlog
@@ -79,6 +80,41 @@ _TC_END_TAG_RE = re.compile(r"</tool_call>")
 _TC_FUNC_CLOSE_RE = re.compile(r"\s*</function>\s*$")
 _TC_PARAM_START_RE = re.compile(r"<parameter=(\w+)>\s*")
 _TC_PARAM_CLOSE_RE = re.compile(r"\s*</parameter>\s*$")
+
+
+def _env_float(name: str, default: float, min_value: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r; using default %.1f",
+            name,
+            raw,
+            default,
+        )
+        return default
+    if value < min_value:
+        logger.warning(
+            "%s=%.3f is too small; clamping to %.1f",
+            name,
+            value,
+            min_value,
+        )
+        return min_value
+    return value
+
+
+_LLAMA_PREFILL_READ_TIMEOUT_DEFAULT_SECONDS = 5.0 * 60.0 * 60.0
+
+
+_LLAMA_PREFILL_READ_TIMEOUT_SECONDS = _env_float(
+    "UNSLOTH_LLAMA_CPP_PREFILL_READ_TIMEOUT_SECONDS",
+    _LLAMA_PREFILL_READ_TIMEOUT_DEFAULT_SECONDS,
+    1.0,
+)
 
 
 class LlamaCppBackend:
@@ -2213,7 +2249,8 @@ class LlamaCppBackend:
     ):
         """Open an httpx streaming POST with cancel support.
 
-        Sends the request once with a long read timeout (120 s) so
+        Sends the request once with a long read timeout (default: 5 hours,
+        configurable via UNSLOTH_LLAMA_CPP_PREFILL_READ_TIMEOUT_SECONDS) so
         prompt processing (prefill) can finish without triggering a
         retry storm.  The previous 0.5 s timeout caused duplicate POST
         requests every half second, forcing llama-server to restart
@@ -2271,7 +2308,7 @@ class LlamaCppBackend:
             # which closes the response, unblocking any httpx read.
             prefill_timeout = httpx.Timeout(
                 connect = 30,
-                read = 120.0,
+                read = _LLAMA_PREFILL_READ_TIMEOUT_SECONDS,
                 write = 10,
                 pool = 10,
             )
@@ -2350,8 +2387,8 @@ class LlamaCppBackend:
         _metadata_timings = None
 
         try:
-            # _stream_with_retry uses a 120 s read timeout so prefill
-            # can finish.  Cancel during streaming is handled by the
+            # _stream_with_retry uses the configured prefill read timeout
+            # (default: 5 hours) so prefill can finish. Cancel during streaming is handled by the
             # watcher thread (closes the response on cancel_event).
             stream_timeout = httpx.Timeout(connect = 10, read = 0.5, write = 10, pool = 10)
             _auth_headers = (

@@ -7,11 +7,39 @@ Pydantic schemas for Inference API
 
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from typing import Annotated, Any, Dict, Literal, Optional, List, Union
 
 from pydantic import BaseModel, Discriminator, Field, Tag, model_validator
+
+
+def _env_int(
+    name: str,
+    default: int,
+    *,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    raw = os.getenv(name)
+    try:
+        value = int(raw) if raw is not None else default
+    except (TypeError, ValueError):
+        value = default
+    if minimum is not None:
+        value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
+_WIKI_MERGE_MAINTENANCE_MAX_MERGES_DEFAULT = _env_int(
+    "UNSLOTH_WIKI_MERGE_MAINTENANCE_MAX_MERGES",
+    512,
+    minimum = 1,
+    maximum = 512,
+)
 
 
 class LoadRequest(BaseModel):
@@ -574,6 +602,287 @@ class ChatCompletion(BaseModel):
     model: str = "default"
     choices: list[CompletionChoice]
     usage: CompletionUsage = Field(default_factory = CompletionUsage)
+
+
+class RagContextDebugRequest(BaseModel):
+    """Request payload for previewing wiki/RAG context selection."""
+
+    query: str = Field(..., min_length = 1, description = "User query to inspect")
+    include_pending_raw: bool = Field(
+        True,
+        description = "Ingest pending files from raw/ before retrieval",
+    )
+    max_pages: Optional[int] = Field(
+        None,
+        ge = 1,
+        le = 32,
+        description = "Optional override for max context pages",
+    )
+    max_chars_per_page: Optional[int] = Field(
+        None,
+        ge = 200,
+        le = 12000,
+        description = "Optional override for max chars per selected page",
+    )
+    max_total_chars: Optional[int] = Field(
+        None,
+        ge = 500,
+        le = 30000,
+        description = "Optional override for max total context characters",
+    )
+
+
+class RagContextSnippet(BaseModel):
+    """One selected page/snippet in a debug context response."""
+
+    page: str
+    score: float
+    snippet: str
+
+
+class RagContextDebugResponse(BaseModel):
+    """Debug details for selected wiki/RAG context."""
+
+    query: str
+    source: Literal["live-query", "last-request"]
+    wants_history: bool
+    context: str
+    context_characters: int
+    pages_considered: int
+    selected: list[RagContextSnippet]
+    applied_limits: Dict[str, int]
+    generated_at: str
+
+
+class WikiArchiveRequest(BaseModel):
+    """Archive stale wiki source pages while keeping recent canonical pages."""
+
+    dry_run: bool = Field(
+        False,
+        description = "If true, only report files that would be moved",
+    )
+    keep_recent_chat: int = Field(
+        16,
+        ge = 0,
+        le = 500,
+        description = "How many latest chat-history pages to keep",
+    )
+    keep_recent_per_source: int = Field(
+        1,
+        ge = 1,
+        le = 10,
+        description = "How many newest pages to keep per source_ref bucket",
+    )
+
+
+class WikiArchiveResponse(BaseModel):
+    """Result of a stale wiki source archival operation."""
+
+    dry_run: bool
+    archive_dir: str
+    moved_count: int
+    moved_sources: list[str]
+    moved_raw: list[str]
+    errors: list[str]
+
+
+class WikiIngestRequest(BaseModel):
+    """Request payload for manual wiki ingestion operations."""
+
+    source_path: Optional[str] = Field(
+        None,
+        description = "Optional local file path to ingest",
+    )
+    max_pending_raw_files: int = Field(
+        8,
+        ge = 1,
+        le = 128,
+        description = "How many pending files to ingest from raw/ when source_path is not set",
+    )
+
+
+class WikiIngestResponse(BaseModel):
+    """Result of a manual wiki ingestion operation."""
+
+    status: str
+    processed_files: int
+    results: list[Dict[str, Any]]
+
+
+class WikiEnrichRequest(BaseModel):
+    """Request payload for index-driven enrichment of analysis pages."""
+
+    dry_run: bool = Field(
+        False,
+        description = "If true, report changes without writing files",
+    )
+    max_analysis_pages: int = Field(
+        64,
+        ge = 1,
+        le = 1000,
+        description = "Maximum number of analysis pages to scan",
+    )
+    fill_gaps_from_web: bool = Field(
+        False,
+        description = "If true, use lint missing-concept gaps and web search to draft concept pages before enrichment",
+    )
+    max_web_gap_queries: int = Field(
+        4,
+        ge = 1,
+        le = 100,
+        description = "Maximum number of lint gaps to search on the web during one enrich run",
+    )
+
+
+class WikiEnrichResponse(BaseModel):
+    """Result of enriching wiki analysis pages."""
+
+    status: str
+    dry_run: bool
+    scanned_pages: int
+    updated_pages: int
+    changes: list[Dict[str, Any]]
+    web_gap_fill: Dict[str, Any]
+
+
+class WikiRetryFallbackRequest(BaseModel):
+    """Request payload for retrying fallback-generated analysis pages."""
+
+    dry_run: bool = Field(
+        False,
+        description = "If true, report retry outcomes without writing new analysis pages",
+    )
+    max_analysis_pages: int = Field(
+        24,
+        ge = 1,
+        le = 1000,
+        description = "Maximum number of recent analysis pages to inspect for fallback retries",
+    )
+
+
+class WikiRetryFallbackResponse(BaseModel):
+    """Result of retrying fallback-generated analysis pages."""
+
+    status: str
+    dry_run: bool
+    scanned_pages: int
+    fallback_pages_found: int
+    retried_pages: int
+    regenerated_pages: int
+    fallback_still: int
+    skipped_no_question: int
+    errors: list[str]
+    results: list[Dict[str, Any]]
+
+
+class WikiMergeMaintenanceRequest(BaseModel):
+    """Request payload for duplicate entity/concept merge maintenance."""
+
+    dry_run: bool = Field(
+        True,
+        description = "If true, report merge actions without writing files",
+    )
+    include_entities: bool = Field(
+        True,
+        description = "Whether entity page merge candidates are considered",
+    )
+    include_concepts: bool = Field(
+        True,
+        description = "Whether concept page merge candidates are considered",
+    )
+    similarity_threshold: float = Field(
+        0.75,
+        ge = 0.5,
+        le = 1.0,
+        description = "Minimum candidate similarity required for merge planning",
+    )
+    max_merges: int = Field(
+        _WIKI_MERGE_MAINTENANCE_MAX_MERGES_DEFAULT,
+        ge = 1,
+        le = 512,
+        description = "Maximum number of merges to plan/apply in a single run (default from UNSLOTH_WIKI_MERGE_MAINTENANCE_MAX_MERGES)",
+    )
+
+
+class WikiMergeMaintenanceResponse(BaseModel):
+    """Result of duplicate entity/concept merge maintenance."""
+
+    status: str
+    dry_run: bool
+    entity_candidates: int
+    concept_candidates: int
+    scanned_candidates: int
+    planned_merges: int
+    applied_merges: int
+    rewritten_pages: int
+    rewritten_links: int
+    archived_pages: list[str]
+    skipped: list[Dict[str, Any]]
+    merges: list[Dict[str, Any]]
+    errors: list[str]
+
+
+class WikiQueryRequest(BaseModel):
+    """Request payload for querying the maintained wiki."""
+
+    question: str = Field(..., min_length = 1)
+    save_answer: bool = Field(
+        True,
+        description = "Whether to file the answer into wiki/analysis",
+    )
+
+
+class WikiQueryResponse(BaseModel):
+    """Result of a wiki query operation."""
+
+    status: str
+    answer: str
+    answer_page: Optional[str]
+    context_pages: list[str]
+
+
+class WikiLintResponse(BaseModel):
+    """Health report for the maintained wiki."""
+
+    status: str
+    orphans: list[str]
+    stale_pages: list[Dict[str, Any]]
+    broken_links: list[Dict[str, str]]
+    missing_concepts: list[str]
+    low_coverage_sources: list[str]
+    entity_merge_candidates: list[Dict[str, Any]] = Field(
+        default_factory = list,
+        description = "Suggested duplicate entity pages that can be merged during maintenance",
+    )
+    concept_merge_candidates: list[Dict[str, Any]] = Field(
+        default_factory = list,
+        description = "Suggested duplicate concept pages that can be merged during maintenance",
+    )
+    total_pages: int
+    graphify_insights: Dict[str, Any]
+
+
+class WikiGraphifyExportRequest(BaseModel):
+    """Request payload for exporting graphify-style wiki articles."""
+
+    output_subdir: str = Field(
+        "graphify-wiki",
+        min_length = 1,
+        max_length = 120,
+        description = "Subdirectory under wiki/ where graphify markdown articles are written",
+    )
+
+
+class WikiGraphifyExportResponse(BaseModel):
+    """Result of a graphify wiki export operation."""
+
+    status: str
+    reason: Optional[str] = None
+    output_dir: Optional[str] = None
+    index_file: Optional[str] = None
+    articles_written: int = 0
+    communities: int = 0
+    god_nodes: int = 0
 
 
 # =====================================================================
