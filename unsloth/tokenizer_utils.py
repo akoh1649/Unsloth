@@ -509,6 +509,7 @@ def _load_correct_tokenizer(
     trust_remote_code = False,
     cache_dir = "huggingface_tokenizers_cache",
     fix_tokenizer = True,
+    revision = None,
 ):
     if IS_COLAB_ENVIRONMENT:
         cache_dir = cache_dir
@@ -534,6 +535,7 @@ def _load_correct_tokenizer(
             legacy = False,
             from_slow = True,
             cache_dir = cache_dir,
+            revision = revision,
         )
     except:
         slow_tokenizer = None
@@ -552,6 +554,7 @@ def _load_correct_tokenizer(
         token = token,
         trust_remote_code = trust_remote_code,
         cache_dir = cache_dir,
+        revision = revision,
     )
 
     if not fix_tokenizer or tokenizer_name in IGNORED_TOKENIZER_NAMES:
@@ -593,6 +596,7 @@ def load_correct_tokenizer(
     trust_remote_code = False,
     cache_dir = "huggingface_tokenizers_cache",
     fix_tokenizer = True,
+    revision = None,
 ):
     tokenizer = _load_correct_tokenizer(
         tokenizer_name = tokenizer_name,
@@ -602,6 +606,7 @@ def load_correct_tokenizer(
         trust_remote_code = trust_remote_code,
         cache_dir = cache_dir,
         fix_tokenizer = fix_tokenizer,
+        revision = revision,
     )
 
     ### 1. Fixup tokenizer's chat_template
