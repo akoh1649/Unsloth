@@ -4,6 +4,7 @@
 import type { ChatModelAdapter } from "@assistant-ui/react";
 import type { MessageTiming, ToolCallMessagePart } from "@assistant-ui/core";
 import { toast } from "sonner";
+import { getAuthToken } from "@/features/auth/session";
 import {
   generateAudio,
   listCachedGguf,
@@ -695,7 +696,38 @@ export function createOpenAIStreamAdapter(): ChatModelAdapter {
       const toolCallParts: ToolCallMessagePart[] = [];
       let serverMetadata: { usage?: ServerUsage; timings?: ServerTimings } | null = null;
 
+      // Per-run cancellation token so a delayed stop POST cannot match
+      // the next run on the same thread.
+      const cancelId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+      // Colab-style proxies can swallow fetch aborts, so also POST
+      // /inference/cancel explicitly on abort.
+      const onAbortCancel = () => {
+        const body: Record<string, string> = { cancel_id: cancelId };
+        if (resolvedThreadId) body.session_id = resolvedThreadId;
+        // Plain fetch, not authFetch: authFetch redirects to login on
+        // 401, which would kick the user out mid-stop.
+        const token = getAuthToken();
+        void fetch("/api/inference/cancel", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(body),
+          keepalive: true,
+        }).catch(() => {});
+      };
       try {
+        if (abortSignal.aborted) {
+          onAbortCancel();
+        } else {
+          abortSignal.addEventListener("abort", onAbortCancel, { once: true });
+        }
+
         const { supportsReasoning, reasoningEnabled } = runtime;
         const stream = streamChatCompletions(
           {
@@ -711,6 +743,8 @@ export function createOpenAIStreamAdapter(): ChatModelAdapter {
             presence_penalty: params.presencePenalty,
             image_base64: imageBase64,
             audio_base64: audioBase64,
+            cancel_id: cancelId,
+            ...(resolvedThreadId ? { session_id: resolvedThreadId } : {}),
             ...(useAdapter === undefined ? {} : { use_adapter: useAdapter }),
             ...(supportsReasoning ? { enable_thinking: reasoningEnabled } : {}),
             ...(supportsTools && (toolsEnabled || codeToolsEnabled)
@@ -726,7 +760,6 @@ export function createOpenAIStreamAdapter(): ChatModelAdapter {
                     const mins = useChatRuntimeStore.getState().toolCallTimeout;
                     return mins >= 9999 ? 9999 : mins * 60;
                   })(),
-                  session_id: resolvedThreadId,
                 }
               : {}),
           },
@@ -924,6 +957,7 @@ export function createOpenAIStreamAdapter(): ChatModelAdapter {
         }
         throw err;
       } finally {
+        abortSignal.removeEventListener("abort", onAbortCancel);
         runtime.setGeneratingStatus(null);
         runtime.setToolStatus(null);
         clearTimeout(warmupTimer);
