@@ -513,7 +513,9 @@ pass
 '''
 
 
-_UNSLOTH_RETURN_HIDDEN_STATES_SUPPORT_MARKER = "__UNSLOTH_SUPPORTS_RETURN_HIDDEN_STATES__"
+_UNSLOTH_RETURN_HIDDEN_STATES_SUPPORT_MARKER = (
+    "__UNSLOTH_SUPPORTS_RETURN_HIDDEN_STATES__"
+)
 _UNSLOTH_GRPO_HIDDEN_STATES_WRAPPED_ATTR = "_unsloth_grpo_hidden_states_forward_wrapped"
 _UNSLOTH_GRPO_HIDDEN_STATES_WARNING_ATTR = "_unsloth_grpo_hidden_states_warning_issued"
 
@@ -540,13 +542,10 @@ def _source_supports_unsloth_return_hidden_states(forward):
         source = inspect.getsource(forward)
     except Exception:
         return False
-    return (
-        "UNSLOTH_RETURN_HIDDEN_STATES" in source
-        and (
-            "logits = hidden_states" in source
-            or "logits=hidden_states" in source
-            or "return hidden_states instead of logits" in source
-        )
+    return "UNSLOTH_RETURN_HIDDEN_STATES" in source and (
+        "logits = hidden_states" in source
+        or "logits=hidden_states" in source
+        or "return hidden_states instead of logits" in source
     )
 
 
@@ -557,7 +556,9 @@ def _model_supports_unsloth_return_hidden_states(model):
             continue
         if getattr(candidate, _UNSLOTH_RETURN_HIDDEN_STATES_SUPPORT_MARKER, False):
             return True
-        if getattr(type(candidate), _UNSLOTH_RETURN_HIDDEN_STATES_SUPPORT_MARKER, False):
+        if getattr(
+            type(candidate), _UNSLOTH_RETURN_HIDDEN_STATES_SUPPORT_MARKER, False
+        ):
             return True
         forward = getattr(candidate, "forward", None)
         if _source_supports_unsloth_return_hidden_states(forward):
@@ -612,7 +613,9 @@ def _replace_outputs_logits(outputs, hidden_states):
         return outputs
     if isinstance(outputs, tuple) and len(outputs) != 0:
         return (hidden_states,) + tuple(outputs[1:])
-    raise TypeError(f"Unsupported output type for GRPO hidden-state fallback: {type(outputs)}")
+    raise TypeError(
+        f"Unsupported output type for GRPO hidden-state fallback: {type(outputs)}"
+    )
 
 
 def _install_grpo_hidden_states_forward_wrapper(model):
@@ -622,9 +625,8 @@ def _install_grpo_hidden_states_forward_wrapper(model):
         return False
 
     target_model = _grpo_hidden_states_wrap_target(model)
-    if (
-        target_model is None
-        or getattr(target_model, _UNSLOTH_GRPO_HIDDEN_STATES_WRAPPED_ATTR, False)
+    if target_model is None or getattr(
+        target_model, _UNSLOTH_GRPO_HIDDEN_STATES_WRAPPED_ATTR, False
     ):
         setattr(model, _UNSLOTH_GRPO_HIDDEN_STATES_WRAPPED_ATTR, True)
         return False
@@ -644,9 +646,8 @@ def _install_grpo_hidden_states_forward_wrapper(model):
         try:
             outputs = original_forward(*args, **forward_kwargs)
         except TypeError as error:
-            if (
-                "output_hidden_states" not in str(error)
-                and "return_dict" not in str(error)
+            if "output_hidden_states" not in str(error) and "return_dict" not in str(
+                error
             ):
                 raise
             _warn_grpo_hidden_states_fallback_once(
